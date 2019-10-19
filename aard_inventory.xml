@@ -3605,38 +3605,62 @@ Example:
 
 end -- inv.cli.compare.examples
 
-
 inv.cli.covet = {}
 function inv.cli.covet.fn(name, line, wildcards)
-  local priorityName = wildcards[1] or ""
-  local auctionNum   = tonumber(wildcards[2] or "")
-  local endTag       = inv.tags.new(line, "Covet results", nil, inv.tags.cleanup.timed)
+   local priorityName = wildcards[1] or ""
+   local auctionNum   = (tostring(wildcards[2]) == "all") and "all" or tonumber(wildcards[2] or "")
+   local endTag       = inv.tags.new(line, "Covet results", nil, inv.tags.cleanup.timed)
 
-  if (not inv.init.initializedActive) then
-    dbot.info("Skipping covet request: plugin is not yet initialized (are you AFK or sleeping?)")
-    return inv.tags.stop(invTagsCovet, endTag, DRL_RET_UNINITIALIZED)
-  elseif (not dbot.gmcp.stateIsActive()) then
-    dbot.info("Skipping covet request: character is not in the active state")
-    return inv.tags.stop(invTagsCovet, endTag, DRL_RET_NOT_ACTIVE)
-  end -- if
+   if (not inv.init.initializedActive) then
+      dbot.info("Skipping covet request: plugin is not yet initialized (are you AFK or sleeping?)")
+      return inv.tags.stop(invTagsCovet, endTag, DRL_RET_UNINITIALIZED)
+   elseif (not dbot.gmcp.stateIsActive()) then
+      dbot.info("Skipping covet request: character is not in the active state")
+      return inv.tags.stop(invTagsCovet, endTag, DRL_RET_NOT_ACTIVE)
+   end -- if
 
-  if (auctionNum == nil) then
-    dbot.warn("inv.cli.covet: auction # is not a number")
-    inv.cli.covet.usage()
-    return inv.tags.stop(invTagsCovet, endTag, DRL_RET_INVALID_PARAM)
-  end -- if
+   if (auctionNum == nil) then
+      dbot.warn("inv.cli.covet: auction # is not a number")
+      inv.cli.covet.usage()
+      return inv.tags.stop(invTagsCovet, endTag, DRL_RET_INVALID_PARAM)
+   end -- if
 
-  if (priorityName == "") then
-    dbot.warn("inv.cli.covet: priorityName is nil")
-    inv.cli.covet.usage()
-    return inv.tags.stop(invTagsCovet, endTag, DRL_RET_INVALID_PARAM)
-  end -- if
+   if (priorityName == "") then
+      dbot.warn("inv.cli.covet: priorityName is nil")
+      inv.cli.covet.usage()
+      return inv.tags.stop(invTagsCovet, endTag, DRL_RET_INVALID_PARAM)
+   end -- if
 
-  dbot.debug("inv.cli.covet.fn: priority=\"" .. priorityName .. "\", auctionNum=" .. auctionNum)
+   dbot.debug("inv.cli.covet.fn: priority=\"" .. priorityName .. "\", auctionNum=" .. auctionNum)
 
-  inv.set.covet(priorityName, auctionNum, endTag)
+   ids = {}
+   if (auctionNum == "all") then
+      Send("lbid -f bonus")
+
+      wait.make(function ()
+	    line, wildcards = wait.regexp("-+?$")
+	    line = ""
+	    repeat
+	       line, wildcards = wait.regexp("^((  [0-9]+)|-+).*$")
+	       if wildcards[1] ~= nil then
+		  table.insert(ids, tostring(wildcards[1]))
+	       end
+	    until string.find(line, "-")
+	    table.remove(ids, #ids)
+	    for idx, value in pairs(ids) do
+	       Note(value)
+	       cur_id = tonumber(value)
+	       inv.set.covet(priorityName, cur_id, endTag)
+	       line, wildcards = wait.match("{/dinv covet *}")
+	    end
+      end)
+   else
+      inv.set.covet(priorityName, auctionNum, endTag)
+   end
+
+   dbot.debug("inv.cli.covet.fn: priority=\"" .. priorityName .. "\", auctionNum=" .. tostring(auctionNum))
+
 end -- inv.cli.covet.fn
-
 
 function inv.cli.covet.usage()
   dbot.print("@W    " .. pluginNameCmd .. " covet @G<priority name> <auction #>@w")
@@ -15480,7 +15504,7 @@ function inv.set.covet(priorityName, auctionNum, endTag)
   end -- if
 
   if (auctionNum == nil) or (type(auctionNum) ~= "number") then
-    dbot.warn("inv.set.covet: Auction # parameter is not a number!")
+    dbot.warn("inv.set.covet: Auction # parameter is not a number or all!")
     return inv.tags.stop(invTagsCovet, endTag, DRL_RET_INVALID_PARAM)
   end -- if
 
