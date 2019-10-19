@@ -14368,9 +14368,9 @@ function inv.set.createCR()
     end -- if
 
     -- Yield periodically so we don't appear to hang the system
-    if (numIters % 3 == 0) then
-      wait.time(0.1)
-    end -- if
+    --if (numIters % 3 == 0) then
+    --  wait.time(0.1)
+    --end -- if
   until (score < (bestScore * 0.8)) -- Let things anneal a bit, but cut it off if we are < x% of previous best
 
   -- Some items can be worn in multiple locations (e.g., a ring could be on "lfinger" or "rfinger" or
