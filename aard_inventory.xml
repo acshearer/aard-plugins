@@ -3631,29 +3631,10 @@ function inv.cli.covet.fn(name, line, wildcards)
       return inv.tags.stop(invTagsCovet, endTag, DRL_RET_INVALID_PARAM)
    end -- if
 
-   dbot.debug("inv.cli.covet.fn: priority=\"" .. priorityName .. "\", auctionNum=" .. auctionNum)
+   dbot.debug("inv.cli.covet.fn: priority=\"" .. priorityName .. "\", auctionNum=" .. tostring(auctionNum))
 
-   ids = {}
    if (auctionNum == "all") then
-      Send("lbid -f bonus")
-
-      wait.make(function ()
-	    line, wildcards = wait.regexp("-+?$")
-	    line = ""
-	    repeat
-	       line, wildcards = wait.regexp("^((  [0-9]+)|-+).*$")
-	       if wildcards[1] ~= nil then
-		  table.insert(ids, tostring(wildcards[1]))
-	       end
-	    until string.find(line, "-")
-	    table.remove(ids, #ids)
-	    for idx, value in pairs(ids) do
-	       Note(value)
-	       cur_id = tonumber(value)
-	       inv.set.covet(priorityName, cur_id, endTag)
-	       line, wildcards = wait.match("{/dinv covet *}")
-	    end
-      end)
+      inv.cli.covet.all(priorityName, endTag)
    else
       inv.set.covet(priorityName, auctionNum, endTag)
    end
@@ -3661,6 +3642,38 @@ function inv.cli.covet.fn(name, line, wildcards)
    dbot.debug("inv.cli.covet.fn: priority=\"" .. priorityName .. "\", auctionNum=" .. tostring(auctionNum))
 
 end -- inv.cli.covet.fn
+
+ids = {}
+--Add end tag
+function inv.cli.covet.all(priorityName, endTag)
+   Send("lbid -f bonus")
+
+   wait.make(function ()
+	 line, wildcards = wait.regexp("-+?$")
+	 line = ""
+	 repeat
+	    line, wildcards = wait.regexp("^((  [0-9]+)|-+).*$")
+	    if wildcards[1] ~= nil then
+	       table.insert(ids, tostring(wildcards[1]))
+	    end
+	 until line == "------------------------------------------------------------------------------"
+	 table.remove(ids, #ids)
+	 for idx, value in pairs(ids) do
+	    cur_id = tonumber(value)
+	    inv.state = invStateIdle
+	    retVal = inv.set.covet(priorityName, cur_id, endTag)
+	    line, wildcards = wait.match("{/dinv covet *}")
+
+	    -- Clear errors
+	    inv.set.covetPkg             = nil
+	    if(inv.analyze.setsPkg) then
+	       inv.analyze.setsPkg = nil
+	    end
+	 end
+   end)
+
+  return DRL_RET_SUCCESS
+end
 
 function inv.cli.covet.usage()
   dbot.print("@W    " .. pluginNameCmd .. " covet @G<priority name> <auction #>@w")
@@ -14291,7 +14304,7 @@ function inv.set.createCR()
     while (inv.statBonus.inProgress == true) do
       if (totTime > timeout) then
         dbot.warn("inv.set.createCR: timed out waiting for stat bonus to be detected")
-        retval = DRL_RET_TIMEOUT
+	retval = DRL_RET_TIMEOUT
         break
       end -- if
 
@@ -15643,6 +15656,7 @@ function inv.set.covetCR()
       retval = dbot.callback.wait(resultData, inv.analyze.timeoutThreshold, 1)
       if (retval ~= DRL_RET_SUCCESS) then
         dbot.warn("inv.set.covetCR: Analysis of set failed: " .. dbot.retval.getString(retval))
+	return inv.tags.stop(invTagsCovet, endTag, retval)
       end -- if
     end -- if
 
@@ -16901,12 +16915,23 @@ function inv.analyze.setsCR()
     dbot.debug("Creating analysis set for " .. inv.analyze.setsPkg.priorityName .. ", level=" .. currentLevel)
 
     inv.set.table[inv.analyze.setsPkg.priorityName][currentLevel] = nil
+    -- covet.all causes this somehow
+    -- We do not need to warn, a timeout warning has already been sent to user by inv.analyze
+    if(inv.analyze.setsPkg == nil) then
+       --dbot.warn("inv.analyze.setsCR: inv.analyze.setsPkg == nil")
+       return DRL_RET_TIMEOUT
+    end -- if
     retval = inv.set.create(inv.analyze.setsPkg.priorityName, currentLevel,
                             drlSynchronous, inv.analyze.setsPkg.intensity)
     if (retval ~= DRL_RET_SUCCESS) then
       dbot.warn("inv.analyze.setsCR: Failed to create \"" .. (inv.analyze.setsPkg.priorityName or "nil") ..
                 "\" set at level " .. currentLevel .. ": " .. dbot.retval.getString(retval))
       break
+    end -- if
+
+    if(inv.analyze.setsPkg == nil) then
+       --dbot.warn("inv.analyze.setsCR: inv.analyze.setsPkg == nil")
+       return DRL_RET_TIMEOUT
     end -- if
 
     -- Show progress and let something else run occasionally
