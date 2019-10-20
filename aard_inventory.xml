@@ -3653,11 +3653,16 @@ function inv.cli.covet.all(priorityName, endTag)
     line = ""
     repeat
       -- Probably a better regex to match the comma seperated gold values
-      line, wildcards = wait.regexp("((  [0-9]+)|-+$)(.*?Gold +(\\d((,?\\d)+)?)(\\*?).*?)?")
-      if wildcards[1] ~= nil and (wildcards[7] ~= nil and wildcards[7] ~= "*") then
+      line, wildcards = wait.regexp("^(?:  |\\* )?([0-9]+|-+$)(.*?Gold +(\\d((,?\\d)+)?)(\\*?).*?)?")
+      if wildcards[1] ~= nil and (wildcards[6] ~= nil and wildcards[6] ~= "*") then
         table.insert(ids, tostring(wildcards[1]))
       end -- if
-    until line == "------------------------------------------------------------------------------"
+
+      -- For now, it suffices to check if the 7th character is a
+      -- dash. This is only true if the line matched is the last line
+      -- of 'lbid'.
+    until string.sub(line, 7, 7) == "-"
+
     -- remove last element in ids list, as it is not an id
     table.remove(ids, #ids)
     for idx, value in pairs(ids) do
