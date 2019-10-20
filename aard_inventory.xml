@@ -3652,11 +3652,13 @@ function inv.cli.covet.all(priorityName, endTag)
     line, wildcards = wait.regexp("-+?$")
     line = ""
     repeat
-      line, wildcards = wait.regexp("^((  [0-9]+)|-+).*$")
-      if wildcards[1] ~= nil then
+      -- Probably a better regex to match the comma seperated gold values
+      line, wildcards = wait.regexp("((  [0-9]+)|-+$)(.*?Gold +(\\d((,?\\d)+)?)(\\*?).*?)?")
+      if wildcards[1] ~= nil and (wildcards[7] ~= nil and wildcards[7] ~= "*") then
         table.insert(ids, tostring(wildcards[1]))
       end -- if
     until line == "------------------------------------------------------------------------------"
+    -- remove last element in ids list, as it is not an id
     table.remove(ids, #ids)
     for idx, value in pairs(ids) do
       cur_id = tonumber(value)
