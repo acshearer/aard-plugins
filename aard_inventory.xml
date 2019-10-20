@@ -14382,7 +14382,7 @@ function inv.set.createCR()
 
     -- Yield periodically so we don't appear to hang the system
     if (numIters % 3 == 0) then
-      wait.time(0.01)
+       wait.time(0.05)
     end -- if
   until (score < (bestScore * 0.8)) -- Let things anneal a bit, but cut it off if we are < x% of previous best
 
