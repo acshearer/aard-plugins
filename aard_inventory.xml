@@ -290,6 +290,16 @@ Release Notes
   </alias>
 
   <alias
+   script="inv.cli.theorychant.fn"
+   match="^[ ]*dinv[ ]+theorychant[ ]+(?<enchant_type>clear|perform)[ ]*(?<query>.*)?$"
+   enabled="y"
+   regexp="y"
+   send_to="12"
+   sequence="100"
+  >
+  </alias>
+
+  <alias
    script="inv.cli.weapon.fn"
    match="^[ ]*dinv[ ]+weapon[ ]+(next)[ ]*$"
    enabled="y"
@@ -1080,7 +1090,7 @@ end -- OnPluginSend
 
 inv            = {}
 inv.init       = {}
-inv.modules    = "config items cache priority set statBonus consume snapshot tags"
+inv.modules    = "config items cache priority set theorychant statBonus consume snapshot tags"
 inv.inSafeMode = false
 
 inv.init.initializedInstall = false
@@ -2635,6 +2645,184 @@ Examples:
 ]])
 
 end -- inv.cli.set.examples
+
+inv.cli.theorychant = {}
+inv.theorychant = {}
+
+-- Original items will be copied here to be restored.
+inv.theorychant.baseitems = {}
+
+inv.theorychant.init = {}
+function inv.theorychant.init.atInstall()
+  inv.theorychant.type = {}
+
+  inv.theorychant.type.maxsolid = {}
+  inv.theorychant.type.maxsolid[invStatFieldDam] = 6
+
+  inv.theorychant.type.maxillu = {}
+  inv.theorychant.type.maxillu[invStatFieldWis] = 4
+  inv.theorychant.type.maxillu[invStatFieldLuck] = 4
+
+  inv.theorychant.type.maxreso = {}
+  inv.theorychant.type.maxreso[invStatFieldLuck] = 3
+
+  inv.theorychant.type.maxall = inv.theorychant.statsum(
+    {inv.theorychant.type.maxsolid, inv.theorychant.type.maxillu})
+
+  return DRL_RET_SUCCESS
+end
+
+function inv.theorychant.fini()
+  inv.cli.theorychant.clearCR("all")
+  return DRL_RET_SUCCESS
+end
+
+function inv.theorychant.statsum(args)
+  sum = {}
+  if #args == 0 then
+    return {}
+  end
+
+  for _, stats in pairs(args) do
+    for stat, val in pairs(stats) do
+      curval = sum[stat]
+      if curval == nil then
+        sum[stat] = val
+      else
+        sum[stat] = curval + val
+      end
+    end
+  end
+
+  return sum
+end
+
+function inv.cli.theorychant.fn(name, line, wildcards)
+  local enchant_type = wildcards.enchant_type -- required by regexp
+  local query = wildcards.query or ""
+
+  if enchant_type == "clear" then
+    wait.make(function() inv.cli.theorychant.clearCR(query) end)
+  else
+    wait.make(function() inv.cli.theorychant.theorychantCR(query) end)
+  end
+end
+
+function inv.cli.theorychant.theorychantCR(query)
+  local idArray, retval = inv.items.searchCR(query)
+  if retval ~= DRL_RET_SUCCESS then
+    dbot.warn("inv.cli.theorychant.theorychantCR: failed to search inventory table: "
+                .. dbot.retval.getString(retval))
+    return
+  end
+
+  for _, objId in pairs(idArray) do
+    if objId == nil then
+      return
+    end
+
+    local flags = inv.items.getStatField(objId, invStatFieldFlags) or ""
+    -- make the flags easier to parse
+    flags = string.gsub(flags, ",", "")
+
+    if not dbot.isWordInString("theorychanted", flags) then
+      -- calculate the stats to add
+      local addedStatList = {}
+      local nameModification = "+"
+      if not dbot.isWordInString("solidified", flags) then
+        table.insert(addedStatList, inv.theorychant.type.maxsolid)
+        nameModification = nameModification .. "S"
+      end
+      if not dbot.isWordInString("illuminated", flags) then
+        table.insert(addedStatList, inv.theorychant.type.maxillu)
+        nameModification = nameModification .. "I"
+      end
+      if not dbot.isWordInString("resonated", flags) then
+        table.insert(addedStatList, inv.theorychant.type.maxreso)
+        nameModification = nameModification .. "R"
+      end
+
+      if #addedStatList > 0 then
+        local originalEntry = inv.items.getEntry(objId)
+        local text, _  = serialize.save_simple(originalEntry)
+        inv.theorychant.baseitems[objId] = text
+
+        inv.items.setStatField(objId, invStatFieldFlags, flags .. ", theorychanted")
+
+        local addedStats = inv.theorychant.statsum(addedStatList)
+
+        -- add the stats
+        for stat, bonus in pairs(addedStats) do
+          dbot.info("Adding " .. bonus .. " to " .. stat)
+          local curval = inv.items.getStatField(objId, stat) or 0
+          inv.items.setStatField(objId, stat, curval + bonus)
+        end
+
+        -- record the added stats
+        inv.items.setField(objId, "addedStats", addedStats)
+
+        local oldColorName = inv.items.getField(objId, invFieldColorName)
+        inv.items.setField(objId, invFieldColorName,
+                           "@R(" .. nameModification .. ")@W " .. oldColorName)
+
+        -- mark the item as partially identified, so the next refresh cleans this mess up.
+        inv.items.setField(objId, invFieldIdentifyLevel, invIdLevelPartial)
+
+        inv.items.displayItem(objId, invDisplayVerbosityBasic)
+      end
+    end
+  end
+end
+
+function inv.theorychant.restore(objId)
+  if inv.theorychant.baseitems[objId] == nil then
+    dbot.warn("inv.theorychant.restore: could not find base object with id " .. objId)
+    dbot.warn("inv.theorychant.restore: suggest doing a dinv refresh all")
+    return DRL_RET_MISSING_ENTRY
+  end
+
+  local entry = loadstring("return " .. inv.theorychant.baseitems[objId])()
+  if type(entry) ~= "table" then
+    dbot.warn("inv.theorychant.restore: base object with id " .. objId .. " failed to restore.")
+    dbot.warn("inv.theorychant.restore: suggest doing a dinv refresh all")
+    return DRL_RET_INVALD_ENTRY
+  end
+
+  inv.items.setEntry(objId, entry)
+  return DRL_RET_SUCCESS
+end
+
+function inv.cli.theorychant.clearCR(query)
+  if query == "" then
+    query = "all"
+    dbot.info("@WClearing theorychant for all items.")
+  else
+    dbot.info("@WClearing theorychant for query: \"@c" .. query .. "@W\"")
+  end
+
+  local idArray, retval = inv.items.searchCR(query)
+  if retval ~= DRL_RET_SUCCESS then
+    dbot.warn("inv.cli.theorychant.clearCR: failed to search inventory table: "
+                .. dbot.retval.getString(retval))
+    return
+  end
+
+  local restoredCount = 0
+  for _, objId in pairs(idArray) do
+    local flags = inv.items.getStatField(objId, invStatFieldFlags) or ""
+    if dbot.isWordInString("theorychanted", string.gsub(flags, ",", "")) then
+      local retval = inv.theorychant.restore(objId)
+      if retval ~= DRL_RET_SUCCESS then
+        dbot.warn("inv.cli.theorychant.clearCR: failed to restore item: "
+                    .. dbot.retval.getString(retval))
+      else
+        restoredCount = restoredCount + 1
+      end
+
+    end
+  end
+  dbot.info("Restored @Y" .. restoredCount .. "@W theorychanted items.")
+end
 
 
 inv.cli.weapon = {}
@@ -5718,6 +5906,7 @@ function inv.items.getStatField(objId, field)
   end -- if
 
   return entry.stats[field], DRL_RET_SUCCESS
+
 end -- inv.items.getStatField
 
 
