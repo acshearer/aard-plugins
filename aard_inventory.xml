@@ -16986,7 +16986,7 @@ function inv.analyze.setsCR()
     dbot.callback.default(inv.analyze.setsPkg.resultData, retval)
   end -- if
 
-  -- Clean up and retury
+  -- Clean up and return
   inv.analyze.setsPkg = nil
   return retval
 end -- inv.analyze.setsCR
